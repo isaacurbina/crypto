@@ -2,6 +2,9 @@ package com.iucoding.crypto
 
 import android.security.keystore.KeyGenParameterSpec
 import android.security.keystore.KeyProperties
+import kotlinx.coroutines.CoroutineDispatcher
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import java.io.InputStream
 import java.io.OutputStream
 import java.security.KeyStore
@@ -11,7 +14,9 @@ import javax.crypto.KeyGenerator
 import javax.crypto.SecretKey
 import javax.crypto.spec.IvParameterSpec
 
-class CryptoManager {
+class CryptoManager(
+    private val dispatcher: CoroutineDispatcher = Dispatchers.IO
+) {
 
     // region attributes/instances
     private val keyStore: KeyStore by lazy {
@@ -19,37 +24,38 @@ class CryptoManager {
             load(null)
         }
     }
-
-    private val encryptCipher: Cipher by lazy {
-        Cipher.getInstance(TRANSFORMATION).apply {
-            init(Cipher.ENCRYPT_MODE, getKey())
-        }
-    }
     // endregion
 
     // region functions
-    fun encrypt(bytes: ByteArray, outputStream: OutputStream): ByteArray {
-        val encryptedBytes = encryptCipher.doFinal(bytes)
-        outputStream.use {
-            it.write(encryptCipher.iv.size)
-            it.write(encryptCipher.iv)
-            it.write(encryptedBytes.size)
-            it.write(encryptedBytes)
+    suspend fun encrypt(bytes: ByteArray, outputStream: OutputStream): String {
+        return withContext(dispatcher) {
+            val encryptCipher = getEncryptCipher()
+            val encryptedBytes = encryptCipher.doFinal(bytes)
+            outputStream.use {
+                it.write(encryptCipher.iv.size)
+                it.write(encryptCipher.iv)
+                it.write(encryptedBytes.size)
+                it.write(encryptedBytes)
+            }
+            encryptedBytes.decodeToString()
         }
-        return encryptedBytes
     }
 
-    fun decrypt(inputStream: InputStream): ByteArray {
-        return inputStream.use {
-            val ivSize = it.read()
-            val iv = ByteArray(ivSize)
-            it.read(iv)
+    suspend fun decrypt(inputStream: InputStream): String {
+        return withContext(dispatcher) {
+            inputStream.use {
+                val ivSize = it.read()
+                val iv = ByteArray(ivSize)
+                it.read(iv)
 
-            val encryptedBytesSize = it.read()
-            val encryptedBytes = ByteArray(encryptedBytesSize)
-            it.read(encryptedBytes)
+                val encryptedBytesSize = it.read()
+                val encryptedBytes = ByteArray(encryptedBytesSize)
+                it.read(encryptedBytes)
 
-            getDecryptCipherForIv(iv).doFinal(encryptedBytes)
+                getDecryptCipherForIv(iv)
+                    .doFinal(encryptedBytes)
+                    .decodeToString()
+            }
         }
     }
     // endregion
@@ -80,6 +86,12 @@ class CryptoManager {
     private fun getDecryptCipherForIv(iv: ByteArray): Cipher {
         return Cipher.getInstance(TRANSFORMATION).apply {
             init(Cipher.DECRYPT_MODE, getKey(), IvParameterSpec(iv))
+        }
+    }
+
+    private fun getEncryptCipher(): Cipher {
+        return Cipher.getInstance(TRANSFORMATION).apply {
+            init(Cipher.ENCRYPT_MODE, getKey())
         }
     }
     // endregion

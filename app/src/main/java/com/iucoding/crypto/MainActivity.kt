@@ -17,10 +17,13 @@ import androidx.compose.material3.TextField
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import com.iucoding.crypto.ui.theme.CryptoTheme
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
 import java.io.File
 import java.io.FileInputStream
 import java.io.FileOutputStream
@@ -51,27 +54,40 @@ class MainActivity : ComponentActivity() {
                     )
                     Spacer(modifier = Modifier.height(8.dp))
                     Row {
+                        val scope = rememberCoroutineScope()
                         Button(onClick = {
-                            val bytes = messageToEncrypt.encodeToByteArray()
-                            val file = File(filesDir, FILE_NAME)
-                            if (!file.exists()) {
-                                file.createNewFile()
+                            scope.launch(Dispatchers.IO) {
+                                val bytes = messageToEncrypt.encodeToByteArray()
+                                val file = File(filesDir, FILE_NAME)
+                                if (!file.exists()) {
+                                    file.createNewFile()
+                                }
+                                val fos = FileOutputStream(file)
+                                messageToDecrypt = try {
+                                    cryptoManager.encrypt(
+                                        bytes = bytes,
+                                        outputStream = fos
+                                    )
+                                } catch (e: Exception) {
+                                    e.localizedMessage.orEmpty()
+                                }
                             }
-                            val fos = FileOutputStream(file)
-                            messageToDecrypt = cryptoManager.encrypt(
-                                bytes = bytes,
-                                outputStream = fos
-                            ).decodeToString()
                         }) {
                             Text(text = "Encrypt")
                         }
                         Spacer(modifier = Modifier.height(16.dp))
                         Button(onClick = {
-                            val file = File(filesDir, FILE_NAME)
-                            val fis = FileInputStream(file)
-                            messageToEncrypt = cryptoManager.decrypt(
-                                inputStream = fis
-                            ).decodeToString()
+                            scope.launch(Dispatchers.IO) {
+                                val file = File(filesDir, FILE_NAME)
+                                val fis = FileInputStream(file)
+                                messageToEncrypt = try {
+                                    cryptoManager.decrypt(
+                                        inputStream = fis
+                                    )
+                                } catch (e: Exception) {
+                                    e.localizedMessage.orEmpty()
+                                }
+                            }
                         }) {
                             Text(text = "Decrypt")
                         }
